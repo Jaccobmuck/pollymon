@@ -1,6 +1,7 @@
 "use strict";
 
 const SAVE_KEY = "pollymon.save.v1";
+const SETTINGS_KEY = "pollymon.settings.v1";
 const TILE = 32;
 const CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 576;
@@ -14,6 +15,7 @@ const els = {
   placeName: document.getElementById("placeName"),
   coinCount: document.getElementById("coinCount"),
   capsuleCount: document.getElementById("capsuleCount"),
+  pauseButton: document.getElementById("pauseButton"),
   toast: document.getElementById("toast"),
   dialogue: document.getElementById("dialogue"),
   dialogueSpeaker: document.getElementById("dialogueSpeaker"),
@@ -46,7 +48,34 @@ const els = {
   switchModal: document.getElementById("switchModal"),
   switchList: document.getElementById("switchList"),
   closeSwitch: document.getElementById("closeSwitch"),
-  actionButton: document.getElementById("actionButton")
+  actionButton: document.getElementById("actionButton"),
+  titleScreen: document.getElementById("titleScreen"),
+  titleStatus: document.getElementById("titleStatus"),
+  newGameButton: document.getElementById("newGameButton"),
+  continueButton: document.getElementById("continueButton"),
+  loadGameButton: document.getElementById("loadGameButton"),
+  titleSettingsButton: document.getElementById("titleSettingsButton"),
+  creditsButton: document.getElementById("creditsButton"),
+  quitButton: document.getElementById("quitButton"),
+  pauseMenu: document.getElementById("pauseMenu"),
+  resumeButton: document.getElementById("resumeButton"),
+  pauseSaveButton: document.getElementById("pauseSaveButton"),
+  pausePartyButton: document.getElementById("pausePartyButton"),
+  pauseInventoryButton: document.getElementById("pauseInventoryButton"),
+  pauseArchiveButton: document.getElementById("pauseArchiveButton"),
+  pauseSettingsButton: document.getElementById("pauseSettingsButton"),
+  returnTitleButton: document.getElementById("returnTitleButton"),
+  loadModal: document.getElementById("loadModal"),
+  loadSummary: document.getElementById("loadSummary"),
+  loadConfirmButton: document.getElementById("loadConfirmButton"),
+  closeLoadButton: document.getElementById("closeLoadButton"),
+  settingsModal: document.getElementById("settingsModal"),
+  autosaveSetting: document.getElementById("autosaveSetting"),
+  motionSetting: document.getElementById("motionSetting"),
+  confirmNewGameSetting: document.getElementById("confirmNewGameSetting"),
+  settingsDoneButton: document.getElementById("settingsDoneButton"),
+  creditsModal: document.getElementById("creditsModal"),
+  closeCreditsButton: document.getElementById("closeCreditsButton")
 };
 
 const DIRS = {
@@ -350,11 +379,14 @@ let mode = "starter";
 let state = loadGame() || freshState();
 let world = buildWorld();
 let battle = null;
+let appScreen = "title";
+let modeBeforePause = null;
 let moving = false;
 let dialogueQueue = [];
 let dialogueDone = null;
 let toastTimer = 0;
 let lastMoveAt = 0;
+let settings = loadSettings();
 
 function freshState() {
   return {
@@ -368,6 +400,54 @@ function freshState() {
     steps: 0,
     startedAt: Date.now()
   };
+}
+
+function defaultSettings() {
+  return {
+    autosave: true,
+    confirmNewGame: true,
+    reducedMotion: false
+  };
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return { ...defaultSettings(), ...(raw ? JSON.parse(raw) : {}) };
+  } catch (error) {
+    console.warn("Could not load settings", error);
+    return defaultSettings();
+  }
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function hasSavedGame() {
+  try {
+    return Boolean(localStorage.getItem(SAVE_KEY));
+  } catch (_error) {
+    return false;
+  }
+}
+
+function savedGameSummary() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const saved = JSON.parse(raw);
+    return {
+      caught: saved.caught?.length || 0,
+      party: saved.party?.length || 0,
+      petals: saved.inventory?.petals || 0,
+      place: saved.player ? summaryPlace(saved.player.x, saved.player.y) : "Sprig Village",
+      startedAt: saved.startedAt || Date.now()
+    };
+  } catch (error) {
+    console.warn("Could not summarize save", error);
+    return null;
+  }
 }
 
 function loadGame() {
@@ -404,7 +484,203 @@ function saveGame(show = true) {
     caught: [...state.caught]
   };
   localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+  renderTitleScreen();
   if (show) showToast("Field journal saved.");
+}
+
+function applySettings() {
+  document.body.classList.toggle("reduce-motion", settings.reducedMotion);
+  els.autosaveSetting.checked = settings.autosave;
+  els.motionSetting.checked = settings.reducedMotion;
+  els.confirmNewGameSetting.checked = settings.confirmNewGame;
+}
+
+function renderTitleScreen(message = "") {
+  const summary = savedGameSummary();
+  els.continueButton.disabled = !summary;
+  els.loadGameButton.disabled = !summary;
+
+  if (message) {
+    els.titleStatus.textContent = message;
+    return;
+  }
+
+  if (!summary) {
+    els.titleStatus.textContent = "No saved journal yet.";
+    return;
+  }
+
+  els.titleStatus.textContent = `${summary.place} / ${summary.party} partner${summary.party === 1 ? "" : "s"} / ${summary.caught} archived`;
+}
+
+function showTitleScreen(message = "") {
+  appScreen = "title";
+  modeBeforePause = null;
+  els.titleScreen.classList.remove("hidden");
+  els.pauseMenu.classList.add("hidden");
+  els.loadModal.classList.add("hidden");
+  els.settingsModal.classList.add("hidden");
+  els.creditsModal.classList.add("hidden");
+  els.switchModal.classList.add("hidden");
+  els.dialogue.classList.add("hidden");
+  els.starterModal.classList.add("hidden");
+  renderTitleScreen(message);
+  updateShellControls();
+}
+
+function hideTitleScreen() {
+  appScreen = "game";
+  els.titleScreen.classList.add("hidden");
+  updateShellControls();
+}
+
+function startNewGame() {
+  if (settings.confirmNewGame && hasSavedGame()) {
+    const ok = window.confirm("Start a new Pollymon journal and replace the local save?");
+    if (!ok) return;
+  }
+
+  localStorage.removeItem(SAVE_KEY);
+  state = freshState();
+  battle = null;
+  mode = "starter";
+  dialogueQueue = [];
+  dialogueDone = null;
+  els.battle.classList.add("hidden");
+  closeUtilityModals();
+  hideTitleScreen();
+  renderAll();
+}
+
+function continueSavedGame() {
+  const saved = loadGame();
+  if (!saved) {
+    renderTitleScreen("No saved journal found.");
+    return;
+  }
+
+  state = saved;
+  battle = null;
+  mode = state.party.length ? "world" : "starter";
+  dialogueQueue = [];
+  dialogueDone = null;
+  els.battle.classList.add("hidden");
+  closeUtilityModals();
+  hideTitleScreen();
+  renderAll();
+  showToast("Journal loaded.");
+}
+
+function openLoadModal() {
+  renderLoadModal();
+  els.loadModal.classList.remove("hidden");
+}
+
+function renderLoadModal() {
+  const summary = savedGameSummary();
+  els.loadConfirmButton.disabled = !summary;
+  if (!summary) {
+    els.loadSummary.innerHTML = `<strong>No saved journal</strong><span>Start a new game to create one.</span>`;
+    return;
+  }
+
+  els.loadSummary.innerHTML = `
+    <strong>${summary.place}</strong>
+    <span>${summary.party} partner${summary.party === 1 ? "" : "s"} in party</span>
+    <span>${summary.caught} creature${summary.caught === 1 ? "" : "s"} archived</span>
+    <span>${summary.petals} petals</span>
+    <span>Started ${formatSaveDate(summary.startedAt)}</span>
+  `;
+}
+
+function closeUtilityModals() {
+  els.loadModal.classList.add("hidden");
+  els.settingsModal.classList.add("hidden");
+  els.creditsModal.classList.add("hidden");
+}
+
+function openSettingsModal() {
+  applySettings();
+  els.settingsModal.classList.remove("hidden");
+}
+
+function closeSettingsModal() {
+  els.settingsModal.classList.add("hidden");
+}
+
+function openCreditsModal() {
+  els.creditsModal.classList.remove("hidden");
+}
+
+function closeCreditsModal() {
+  els.creditsModal.classList.add("hidden");
+}
+
+function quitGame() {
+  if (state.party.length) saveGame(false);
+  renderTitleScreen("Journal safe. Close the browser tab to exit.");
+}
+
+function openPauseMenu() {
+  if (appScreen !== "game") return;
+  if (mode === "battle") {
+    showToast("Finish this battle before opening the field menu.");
+    return;
+  }
+  if (mode === "paused") return;
+
+  modeBeforePause = mode;
+  mode = "paused";
+  els.pauseMenu.classList.remove("hidden");
+}
+
+function resumeGame() {
+  if (mode === "paused") {
+    mode = modeBeforePause || (state.party.length ? "world" : "starter");
+  }
+  modeBeforePause = null;
+  els.pauseMenu.classList.add("hidden");
+}
+
+function pauseSave() {
+  if (!state.party.length) return;
+  saveGame(true);
+  renderTitleScreen();
+}
+
+function returnToTitle() {
+  if (state.party.length) saveGame(false);
+  battle = null;
+  mode = state.party.length ? "world" : "starter";
+  els.battle.classList.add("hidden");
+  showTitleScreen("Returned to title.");
+}
+
+function openPanelFromPause(panel) {
+  setPanel(panel);
+  resumeGame();
+}
+
+function setPanel(panel) {
+  document.querySelectorAll(".tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.panel === panel);
+  });
+  document.querySelectorAll(".panel-body").forEach((panelBody) => {
+    panelBody.classList.remove("active");
+  });
+  document.getElementById(`${panel}Panel`).classList.add("active");
+}
+
+function updateShellControls() {
+  els.pauseButton.disabled = appScreen !== "game";
+}
+
+function formatSaveDate(value) {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
 }
 
 function reviveMon(mon) {
@@ -732,7 +1008,9 @@ function chooseStarter(speciesId) {
   state.seen.add(speciesId);
   state.caught.add(speciesId);
   state.flags.choseStarter = true;
+  appScreen = "game";
   mode = "world";
+  els.titleScreen.classList.add("hidden");
   els.starterModal.classList.add("hidden");
   showDialogue("Ranger Mira", [
     `${SPECIES[speciesId].name} bumps the latch open before you can ask.`,
@@ -1289,6 +1567,12 @@ function renderAll() {
   renderPanels();
   updateHud();
   drawWorld();
+  renderTitleScreen();
+  updateShellControls();
+  if (appScreen === "title") {
+    els.starterModal.classList.add("hidden");
+    return;
+  }
   if (state.party.length) {
     mode = mode === "starter" ? "world" : mode;
     els.starterModal.classList.add("hidden");
@@ -1411,6 +1695,10 @@ function updateHud() {
 
 function placeName() {
   const { x, y } = state.player;
+  return summaryPlace(x, y);
+}
+
+function summaryPlace(x, y) {
   const tile = tileAt(x, y);
   if (x < 18 && y > 13) return "Sprig Village";
   if (tile === "forest") return "Hushwood";
@@ -1737,6 +2025,25 @@ function escapeHtml(value) {
 
 function setupEvents() {
   window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (!els.settingsModal.classList.contains("hidden")) closeSettingsModal();
+      else if (!els.loadModal.classList.contains("hidden")) els.loadModal.classList.add("hidden");
+      else if (!els.creditsModal.classList.contains("hidden")) closeCreditsModal();
+      else if (mode === "paused") resumeGame();
+      else openPauseMenu();
+      return;
+    }
+
+    if (event.key === "p" || event.key === "P") {
+      event.preventDefault();
+      if (mode === "paused") resumeGame();
+      else openPauseMenu();
+      return;
+    }
+
+    if (appScreen !== "game" || mode === "paused") return;
+
     const keyMap = {
       ArrowUp: "up",
       w: "up",
@@ -1768,14 +2075,39 @@ function setupEvents() {
   els.actionButton.addEventListener("click", interact);
 
   document.querySelectorAll(".tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((button) => button.classList.remove("active"));
-      document
-        .querySelectorAll(".panel-body")
-        .forEach((panel) => panel.classList.remove("active"));
-      tab.classList.add("active");
-      document.getElementById(`${tab.dataset.panel}Panel`).classList.add("active");
-    });
+    tab.addEventListener("click", () => setPanel(tab.dataset.panel));
+  });
+
+  els.pauseButton.addEventListener("click", openPauseMenu);
+  els.newGameButton.addEventListener("click", startNewGame);
+  els.continueButton.addEventListener("click", continueSavedGame);
+  els.loadGameButton.addEventListener("click", openLoadModal);
+  els.titleSettingsButton.addEventListener("click", openSettingsModal);
+  els.creditsButton.addEventListener("click", openCreditsModal);
+  els.quitButton.addEventListener("click", quitGame);
+  els.resumeButton.addEventListener("click", resumeGame);
+  els.pauseSaveButton.addEventListener("click", pauseSave);
+  els.pausePartyButton.addEventListener("click", () => openPanelFromPause("party"));
+  els.pauseInventoryButton.addEventListener("click", () => openPanelFromPause("bag"));
+  els.pauseArchiveButton.addEventListener("click", () => openPanelFromPause("guide"));
+  els.pauseSettingsButton.addEventListener("click", openSettingsModal);
+  els.returnTitleButton.addEventListener("click", returnToTitle);
+  els.loadConfirmButton.addEventListener("click", continueSavedGame);
+  els.closeLoadButton.addEventListener("click", () => els.loadModal.classList.add("hidden"));
+  els.settingsDoneButton.addEventListener("click", closeSettingsModal);
+  els.closeCreditsButton.addEventListener("click", closeCreditsModal);
+  els.autosaveSetting.addEventListener("change", () => {
+    settings.autosave = els.autosaveSetting.checked;
+    saveSettings();
+  });
+  els.motionSetting.addEventListener("change", () => {
+    settings.reducedMotion = els.motionSetting.checked;
+    saveSettings();
+    applySettings();
+  });
+  els.confirmNewGameSetting.addEventListener("change", () => {
+    settings.confirmNewGame = els.confirmNewGameSetting.checked;
+    saveSettings();
   });
 
   els.dialogueNext.addEventListener("click", nextDialogue);
@@ -1788,24 +2120,16 @@ function setupEvents() {
     els.switchModal.classList.add("hidden");
   });
   els.saveButton.addEventListener("click", () => saveGame(true));
-  els.resetButton.addEventListener("click", () => {
-    if (!window.confirm("Start a new Pollymon journal?")) return;
-    localStorage.removeItem(SAVE_KEY);
-    state = freshState();
-    battle = null;
-    mode = "starter";
-    els.battle.classList.add("hidden");
-    els.switchModal.classList.add("hidden");
-    els.dialogue.classList.add("hidden");
-    renderAll();
-  });
+  els.resetButton.addEventListener("click", startNewGame);
 }
 
 function boot() {
   setupEvents();
+  applySettings();
   renderAll();
+  showTitleScreen();
   window.setInterval(() => {
-    if (mode === "world" && state.party.length) saveGame(false);
+    if (settings.autosave && mode === "world" && state.party.length) saveGame(false);
   }, 45000);
   requestAnimationFrame(loop);
 }

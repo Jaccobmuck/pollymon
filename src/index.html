@@ -17,6 +17,7 @@
           <span id="placeName">Sprig Village</span>
           <span id="coinCount">0 petals</span>
           <span id="capsuleCount">0 capsules</span>
+          <button id="pauseButton" class="topbar-button">Menu</button>
         </div>
       </header>
 
@@ -77,12 +78,12 @@
         <aside class="side-panel" aria-label="Game panels">
           <div class="tabs" role="tablist" aria-label="Pollymon panels">
             <button class="tab active" data-panel="party" role="tab">Party</button>
-            <button class="tab" data-panel="guide" role="tab">Guide</button>
-            <button class="tab" data-panel="bag" role="tab">Bag</button>
+            <button class="tab" data-panel="bag" role="tab">Inventory</button>
+            <button class="tab" data-panel="guide" role="tab">Archive</button>
           </div>
           <section id="partyPanel" class="panel-body active" role="tabpanel"></section>
-          <section id="guidePanel" class="panel-body" role="tabpanel"></section>
           <section id="bagPanel" class="panel-body" role="tabpanel"></section>
+          <section id="guidePanel" class="panel-body" role="tabpanel"></section>
           <div class="save-row">
             <button id="saveButton" class="command-button">Save</button>
             <button id="resetButton" class="ghost-button">New</button>
@@ -97,6 +98,109 @@
         <button data-dir="right">E</button>
         <button data-dir="down">S</button>
       </nav>
+
+      <div id="titleScreen" class="title-screen">
+        <div class="title-shell">
+          <section class="title-hero" aria-label="Pollymon launch screen">
+            <div class="modal-kicker">Field Journal 0.1.0</div>
+            <h1>Pollymon</h1>
+            <p>
+              Choose a partner, map the Amberfield paths, and build an original
+              archive of friendly field creatures.
+            </p>
+            <div class="title-preview" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <div id="titleStatus" class="title-status"></div>
+          </section>
+          <nav class="main-menu" aria-label="Main menu">
+            <button id="newGameButton" class="menu-button">New Game</button>
+            <button id="continueButton" class="menu-button">Continue</button>
+            <button id="loadGameButton" class="menu-button">Load Game</button>
+            <button id="titleSettingsButton" class="menu-button">Settings</button>
+            <button id="creditsButton" class="menu-button">Credits</button>
+            <button id="quitButton" class="menu-button">Quit</button>
+          </nav>
+        </div>
+      </div>
+
+      <div id="pauseMenu" class="modal hidden">
+        <div class="modal-sheet menu-sheet">
+          <div class="modal-kicker">Paused</div>
+          <h2>Field Menu</h2>
+          <div class="menu-list">
+            <button id="resumeButton" class="menu-button">Resume</button>
+            <button id="pauseSaveButton" class="menu-button">Save</button>
+            <button id="pausePartyButton" class="menu-button">Party</button>
+            <button id="pauseInventoryButton" class="menu-button">Inventory</button>
+            <button id="pauseArchiveButton" class="menu-button">Creature Archive</button>
+            <button id="pauseSettingsButton" class="menu-button">Options</button>
+            <button id="returnTitleButton" class="danger-button">Return to Title</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="loadModal" class="modal hidden">
+        <div class="modal-sheet">
+          <div class="modal-kicker">Load Game</div>
+          <h2>Saved Journal</h2>
+          <div id="loadSummary" class="load-summary"></div>
+          <div class="modal-actions">
+            <button id="loadConfirmButton" class="command-button">Load Saved Game</button>
+            <button id="closeLoadButton" class="ghost-button">Back</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="settingsModal" class="modal hidden">
+        <div class="modal-sheet">
+          <div class="modal-kicker">Settings</div>
+          <h2>Options</h2>
+          <div class="settings-list">
+            <label class="setting-row">
+              <span>
+                <strong>Autosave</strong>
+                <small>Save the field journal every 45 seconds while exploring.</small>
+              </span>
+              <input id="autosaveSetting" type="checkbox" />
+            </label>
+            <label class="setting-row">
+              <span>
+                <strong>Reduced Motion</strong>
+                <small>Settle idle creature bobbing and menu motion.</small>
+              </span>
+              <input id="motionSetting" type="checkbox" />
+            </label>
+            <label class="setting-row">
+              <span>
+                <strong>Confirm New Game</strong>
+                <small>Ask before replacing the current local journal.</small>
+              </span>
+              <input id="confirmNewGameSetting" type="checkbox" />
+            </label>
+          </div>
+          <div class="modal-actions">
+            <button id="settingsDoneButton" class="command-button">Done</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="creditsModal" class="modal hidden">
+        <div class="modal-sheet">
+          <div class="modal-kicker">Credits</div>
+          <h2>Pollymon</h2>
+          <div class="credits-copy">
+            <p>Concept, code, UI, creature roster, writing, and generated creature art: Pollymon contributors.</p>
+            <p>Engine: HTML5 Canvas, CSS, and modern JavaScript.</p>
+            <p>No external art, audio, fonts, sprites, maps, or franchise assets are imported in the playable build.</p>
+          </div>
+          <div class="modal-actions">
+            <button id="closeCreditsButton" class="command-button">Back</button>
+          </div>
+        </div>
+      </div>
 
       <div id="starterModal" class="modal">
         <div class="modal-sheet starter-sheet">

@@ -3,6 +3,7 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
+*.err
 .env
 .env.*
 .chrome-profile/
