@@ -115,8 +115,12 @@ const ids = [
   "returnTitleButton",
   "loadModal",
   "loadSummary",
+  "loadSlotList",
   "loadConfirmButton",
   "closeLoadButton",
+  "saveModal",
+  "saveSlotList",
+  "closeSaveButton",
   "settingsModal",
   "autosaveSetting",
   "motionSetting",
@@ -131,6 +135,7 @@ elements.starterModal.classList.add("hidden");
 elements.switchModal.classList.add("hidden");
 elements.pauseMenu.classList.add("hidden");
 elements.loadModal.classList.add("hidden");
+elements.saveModal.classList.add("hidden");
 elements.settingsModal.classList.add("hidden");
 elements.creditsModal.classList.add("hidden");
 elements.world.getContext = () => ({
@@ -259,7 +264,11 @@ const shellResult = vm.runInContext(
     mode,
     titleVisible: !els.titleScreen.classList.contains("hidden"),
     pauseHidden: els.pauseMenu.classList.contains("hidden"),
-    canLoad: !els.loadConfirmButton.disabled
+    canLoad: !els.loadConfirmButton.disabled,
+    slotOneStatus: readSlotRecord("slot-1").status,
+    latestLocation: savedGameSummary().location,
+    loadPreview: els.loadSlotList.innerHTML,
+    playtime: savedGameSummary().playtime
   })`,
   context
 );
@@ -269,5 +278,31 @@ assert.equal(shellResult.mode, "world");
 assert.equal(shellResult.titleVisible, true);
 assert.equal(shellResult.pauseHidden, true);
 assert.equal(shellResult.canLoad, true);
+assert.equal(shellResult.slotOneStatus, "ok");
+assert.equal(shellResult.latestLocation, "Sprig Village");
+assert.match(shellResult.loadPreview, /Slot 1/);
+assert.match(shellResult.loadPreview, /Frondle/);
+assert.ok(shellResult.playtime >= 0);
+
+vm.runInContext(
+  `
+    localStorage.setItem(saveSlotStorageKey("slot-2"), "{bad save");
+    renderLoadModal();
+  `,
+  context
+);
+
+const corruptResult = vm.runInContext(
+  `({
+    corruptStatus: readSlotRecord("slot-2").status,
+    corruptPreview: els.loadSlotList.innerHTML.includes("Corrupt save data"),
+    stillCanContinue: Boolean(savedGameSummary())
+  })`,
+  context
+);
+
+assert.equal(corruptResult.corruptStatus, "corrupt");
+assert.equal(corruptResult.corruptPreview, true);
+assert.equal(corruptResult.stillCanContinue, true);
 
 console.log("Smoke test passed.");

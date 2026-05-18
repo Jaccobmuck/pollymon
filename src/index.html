@@ -145,11 +145,23 @@
       <div id="loadModal" class="modal hidden">
         <div class="modal-sheet">
           <div class="modal-kicker">Load Game</div>
-          <h2>Saved Journal</h2>
+          <h2>Choose a Slot</h2>
           <div id="loadSummary" class="load-summary"></div>
+          <div id="loadSlotList" class="slot-list"></div>
           <div class="modal-actions">
             <button id="loadConfirmButton" class="command-button">Load Saved Game</button>
             <button id="closeLoadButton" class="ghost-button">Back</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="saveModal" class="modal hidden">
+        <div class="modal-sheet">
+          <div class="modal-kicker">Manual Save</div>
+          <h2>Pick a Save Slot</h2>
+          <div id="saveSlotList" class="slot-list"></div>
+          <div class="modal-actions">
+            <button id="closeSaveButton" class="ghost-button">Back</button>
           </div>
         </div>
       </div>

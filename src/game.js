@@ -1,7 +1,12 @@
 "use strict";
 
-const SAVE_KEY = "pollymon.save.v1";
+const LEGACY_SAVE_KEY = "pollymon.save.v1";
+const SAVE_INDEX_KEY = "pollymon.saveIndex.v2";
+const SAVE_SLOT_PREFIX = "pollymon.saveSlot.v2.";
 const SETTINGS_KEY = "pollymon.settings.v1";
+const MANUAL_SAVE_SLOTS = ["slot-1", "slot-2", "slot-3"];
+const AUTOSAVE_SLOT_ID = "autosave";
+const DEFAULT_MANUAL_SLOT = "slot-1";
 const TILE = 32;
 const CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 576;
@@ -67,8 +72,12 @@ const els = {
   returnTitleButton: document.getElementById("returnTitleButton"),
   loadModal: document.getElementById("loadModal"),
   loadSummary: document.getElementById("loadSummary"),
+  loadSlotList: document.getElementById("loadSlotList"),
   loadConfirmButton: document.getElementById("loadConfirmButton"),
   closeLoadButton: document.getElementById("closeLoadButton"),
+  saveModal: document.getElementById("saveModal"),
+  saveSlotList: document.getElementById("saveSlotList"),
+  closeSaveButton: document.getElementById("closeSaveButton"),
   settingsModal: document.getElementById("settingsModal"),
   autosaveSetting: document.getElementById("autosaveSetting"),
   motionSetting: document.getElementById("motionSetting"),
@@ -376,17 +385,19 @@ const ENCOUNTERS = {
 };
 
 let mode = "starter";
-let state = loadGame() || freshState();
+let state = freshState();
 let world = buildWorld();
 let battle = null;
 let appScreen = "title";
 let modeBeforePause = null;
+let currentSlotId = null;
 let moving = false;
 let dialogueQueue = [];
 let dialogueDone = null;
 let toastTimer = 0;
 let lastMoveAt = 0;
 let settings = loadSettings();
+let playSessionStartedAt = Date.now();
 
 function freshState() {
   return {
@@ -397,8 +408,12 @@ function freshState() {
     seen: new Set(),
     caught: new Set(),
     flags: {},
+    quests: { starterChosen: false, mapMarks: 0 },
+    defeatedEnemies: [],
+    collectedItems: [],
     steps: 0,
-    startedAt: Date.now()
+    startedAt: Date.now(),
+    playtime: 0
   };
 }
 
@@ -424,68 +439,272 @@ function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
+function saveSlotStorageKey(slotId) {
+  return `${SAVE_SLOT_PREFIX}${slotId}`;
+}
+
+function allSaveSlotIds() {
+  return [...MANUAL_SAVE_SLOTS, AUTOSAVE_SLOT_ID];
+}
+
 function hasSavedGame() {
-  try {
-    return Boolean(localStorage.getItem(SAVE_KEY));
-  } catch (_error) {
-    return false;
-  }
+  return validSaveRecords().length > 0;
 }
 
-function savedGameSummary() {
+function hasCorruptSaves() {
+  return allSaveSlotIds().some((slotId) => readSlotRecord(slotId).status === "corrupt");
+}
+
+function readSaveIndex() {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const saved = JSON.parse(raw);
-    return {
-      caught: saved.caught?.length || 0,
-      party: saved.party?.length || 0,
-      petals: saved.inventory?.petals || 0,
-      place: saved.player ? summaryPlace(saved.player.x, saved.player.y) : "Sprig Village",
-      startedAt: saved.startedAt || Date.now()
-    };
+    const raw = localStorage.getItem(SAVE_INDEX_KEY);
+    return raw ? JSON.parse(raw) : { version: 2, latestSlotId: null };
   } catch (error) {
-    console.warn("Could not summarize save", error);
-    return null;
+    console.warn("Could not read save index", error);
+    return { version: 2, latestSlotId: null, corrupt: true };
   }
 }
 
-function loadGame() {
+function writeSaveIndex(latestSlotId = null) {
+  const latestRecord = latestSlotId ? readSlotRecord(latestSlotId).record : latestSaveRecord();
+  localStorage.setItem(
+    SAVE_INDEX_KEY,
+    JSON.stringify({
+      version: 2,
+      latestSlotId: latestRecord?.slotId || null,
+      updatedAt: latestRecord?.savedAt || null
+    })
+  );
+}
+
+function serializeState() {
+  updateQuestProgress();
+  state.playtime = currentPlaytime();
+  return {
+    ...state,
+    seen: [...state.seen],
+    caught: [...state.caught]
+  };
+}
+
+function reviveSavedState(saved) {
+  const parsed = saved || {};
+  parsed.seen = new Set(parsed.seen || []);
+  parsed.caught = new Set(parsed.caught || []);
+  parsed.inventory = {
+    petals: 0,
+    capsules: 0,
+    tonics: 0,
+    ...(parsed.inventory || {})
+  };
+  parsed.flags = parsed.flags || {};
+  parsed.quests = {
+    starterChosen: Boolean(parsed.flags.choseStarter),
+    mapMarks: Number(parsed.flags.renDefeated || false) + Number(parsed.flags.valaDefeated || false),
+    ...(parsed.quests || {})
+  };
+  parsed.defeatedEnemies = parsed.defeatedEnemies || [];
+  parsed.collectedItems = parsed.collectedItems || [];
+  parsed.reserve = parsed.reserve || [];
+  parsed.party = (parsed.party || []).map(reviveMon);
+  parsed.reserve = parsed.reserve.map(reviveMon);
+  parsed.player = parsed.player || { x: 11, y: 21, dir: "down" };
+  parsed.steps = parsed.steps || 0;
+  parsed.startedAt = parsed.startedAt || Date.now();
+  parsed.playtime = parsed.playtime || 0;
+  return parsed;
+}
+
+function savePreviewFromState(payload, slotId, savedAt) {
+  const party = payload.party || [];
+  const location = payload.player ? summaryPlace(payload.player.x, payload.player.y) : "Sprig Village";
+  return {
+    slotId,
+    savedAt,
+    location,
+    party: party.map((mon) => ({
+      name: SPECIES[mon.speciesId]?.name || "Unknown",
+      level: mon.level || 1
+    })),
+    partyCount: party.length,
+    inventory: payload.inventory || {},
+    petals: payload.inventory?.petals || 0,
+    caught: payload.caught?.length || 0,
+    storyFlags: payload.flags || {},
+    questProgress: payload.quests || {},
+    defeatedEnemies: payload.defeatedEnemies || [],
+    collectedItems: payload.collectedItems || [],
+    playtime: payload.playtime || 0
+  };
+}
+
+function createSaveRecord(slotId, kind) {
+  const savedAt = new Date().toISOString();
+  const payload = serializeState();
+  return {
+    version: 2,
+    slotId,
+    kind,
+    label: slotLabel(slotId),
+    savedAt,
+    preview: savePreviewFromState(payload, slotId, savedAt),
+    payload: {
+      state: payload,
+      settings: { ...settings }
+    }
+  };
+}
+
+function readSlotRecord(slotId) {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    parsed.seen = new Set(parsed.seen || []);
-    parsed.caught = new Set(parsed.caught || []);
-    parsed.inventory = {
-      petals: 0,
-      capsules: 0,
-      tonics: 0,
-      ...(parsed.inventory || {})
-    };
-    parsed.flags = parsed.flags || {};
-    parsed.reserve = parsed.reserve || [];
-    parsed.party = (parsed.party || []).map(reviveMon);
-    parsed.reserve = parsed.reserve.map(reviveMon);
-    parsed.player = parsed.player || { x: 11, y: 21, dir: "down" };
-    parsed.steps = parsed.steps || 0;
-    parsed.startedAt = parsed.startedAt || Date.now();
-    return parsed;
+    const raw = localStorage.getItem(saveSlotStorageKey(slotId));
+    if (!raw) return { status: "empty", slotId };
+    const record = JSON.parse(raw);
+    if (!record?.payload?.state || !record?.preview || record.slotId !== slotId) {
+      return { status: "corrupt", slotId };
+    }
+    return { status: "ok", slotId, record };
+  } catch (error) {
+    console.warn(`Could not read save slot ${slotId}`, error);
+    return { status: "corrupt", slotId };
+  }
+}
+
+function validSaveRecords() {
+  return allSaveSlotIds()
+    .map((slotId) => readSlotRecord(slotId))
+    .filter((entry) => entry.status === "ok")
+    .map((entry) => entry.record)
+    .sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
+}
+
+function latestSaveRecord() {
+  const index = readSaveIndex();
+  if (index.latestSlotId) {
+    const indexed = readSlotRecord(index.latestSlotId);
+    if (indexed.status === "ok") return indexed.record;
+  }
+  return validSaveRecords()[0] || null;
+}
+
+function savedGameSummary(slotId = null) {
+  if (slotId) {
+    const entry = readSlotRecord(slotId);
+    return entry.status === "ok" ? entry.record.preview : null;
+  }
+  return latestSaveRecord()?.preview || null;
+}
+
+function loadGame(slotId = null) {
+  const record = slotId ? readSlotRecord(slotId).record : latestSaveRecord();
+  if (!record) return null;
+  try {
+    settings = { ...defaultSettings(), ...(record.payload.settings || {}) };
+    saveSettings();
+    applySettings();
+    currentSlotId = record.slotId;
+    playSessionStartedAt = Date.now();
+    return reviveSavedState(record.payload.state);
   } catch (error) {
     console.warn("Could not load save", error);
     return null;
   }
 }
 
-function saveGame(show = true) {
-  const payload = {
-    ...state,
-    seen: [...state.seen],
-    caught: [...state.caught]
-  };
-  localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+function saveGame(show = true, slotId = DEFAULT_MANUAL_SLOT, options = {}) {
+  if (!state.party.length) {
+    if (show) showToast("Start a journal before saving.");
+    return false;
+  }
+
+  const kind = slotId === AUTOSAVE_SLOT_ID ? "autosave" : "manual";
+  const confirmOverwrite = options.confirmOverwrite !== false && kind === "manual";
+  const existing = readSlotRecord(slotId);
+  if (confirmOverwrite && existing.status === "ok") {
+    const ok = window.confirm(`Overwrite ${slotLabel(slotId)}?`);
+    if (!ok) return false;
+  }
+
+  const record = createSaveRecord(slotId, kind);
+  localStorage.setItem(saveSlotStorageKey(slotId), JSON.stringify(record));
+  writeSaveIndex(slotId);
+  currentSlotId = slotId;
+  playSessionStartedAt = Date.now();
   renderTitleScreen();
+  renderSaveModal();
+  renderLoadModal();
   if (show) showToast("Field journal saved.");
+  return true;
+}
+
+function deleteSaveSlot(slotId) {
+  const entry = readSlotRecord(slotId);
+  if (entry.status === "empty") return;
+  const ok = window.confirm(`Delete ${slotLabel(slotId)}?`);
+  if (!ok) return;
+  localStorage.removeItem(saveSlotStorageKey(slotId));
+  if (currentSlotId === slotId) currentSlotId = null;
+  writeSaveIndex();
+  renderTitleScreen("Save slot deleted.");
+  renderSaveModal();
+  renderLoadModal();
+}
+
+function slotLabel(slotId) {
+  if (slotId === AUTOSAVE_SLOT_ID) return "Autosave";
+  const index = MANUAL_SAVE_SLOTS.indexOf(slotId);
+  return index >= 0 ? `Slot ${index + 1}` : "Save Slot";
+}
+
+function currentPlaytime() {
+  return Math.max(0, (state.playtime || 0) + (Date.now() - playSessionStartedAt));
+}
+
+function formatPlaytime(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function updateQuestProgress() {
+  state.quests = {
+    ...(state.quests || {}),
+    starterChosen: Boolean(state.flags.choseStarter),
+    mapMarks: Number(state.flags.renDefeated || false) + Number(state.flags.valaDefeated || false)
+  };
+}
+
+function markCollectedItem(itemId) {
+  if (!state.collectedItems.includes(itemId)) state.collectedItems.push(itemId);
+}
+
+function recordEnemyDefeat(entry) {
+  state.defeatedEnemies.push({
+    ...entry,
+    at: new Date().toISOString()
+  });
+  state.defeatedEnemies = state.defeatedEnemies.slice(-100);
+}
+
+function migrateLegacySave() {
+  if (hasSavedGame()) return;
+  try {
+    const raw = localStorage.getItem(LEGACY_SAVE_KEY);
+    if (!raw) return;
+    const legacy = reviveSavedState(JSON.parse(raw));
+    const previousState = state;
+    state = legacy;
+    const record = createSaveRecord(DEFAULT_MANUAL_SLOT, "manual");
+    localStorage.setItem(saveSlotStorageKey(DEFAULT_MANUAL_SLOT), JSON.stringify(record));
+    writeSaveIndex(DEFAULT_MANUAL_SLOT);
+    state = previousState;
+  } catch (error) {
+    console.warn("Could not migrate legacy save", error);
+  }
 }
 
 function applySettings() {
@@ -506,11 +725,13 @@ function renderTitleScreen(message = "") {
   }
 
   if (!summary) {
-    els.titleStatus.textContent = "No saved journal yet.";
+    els.titleStatus.textContent = hasCorruptSaves()
+      ? "No usable save. A corrupt slot can be deleted from Load Game."
+      : "No saved journal yet.";
     return;
   }
 
-  els.titleStatus.textContent = `${summary.place} / ${summary.party} partner${summary.party === 1 ? "" : "s"} / ${summary.caught} archived`;
+  els.titleStatus.textContent = `${summary.location} / ${summary.partyCount} partner${summary.partyCount === 1 ? "" : "s"} / ${summary.caught} archived / ${formatPlaytime(summary.playtime)}`;
 }
 
 function showTitleScreen(message = "") {
@@ -536,12 +757,13 @@ function hideTitleScreen() {
 
 function startNewGame() {
   if (settings.confirmNewGame && hasSavedGame()) {
-    const ok = window.confirm("Start a new Pollymon journal and replace the local save?");
+    const ok = window.confirm("Start a new Pollymon journal? Existing save slots will stay until overwritten or deleted.");
     if (!ok) return;
   }
 
-  localStorage.removeItem(SAVE_KEY);
   state = freshState();
+  currentSlotId = null;
+  playSessionStartedAt = Date.now();
   battle = null;
   mode = "starter";
   dialogueQueue = [];
@@ -571,30 +793,129 @@ function continueSavedGame() {
   showToast("Journal loaded.");
 }
 
+function loadSaveSlot(slotId) {
+  const saved = loadGame(slotId);
+  if (!saved) {
+    renderLoadModal("That save slot is missing or corrupt.");
+    return;
+  }
+
+  state = saved;
+  battle = null;
+  mode = state.party.length ? "world" : "starter";
+  dialogueQueue = [];
+  dialogueDone = null;
+  els.battle.classList.add("hidden");
+  closeUtilityModals();
+  hideTitleScreen();
+  renderAll();
+  showToast(`${slotLabel(slotId)} loaded.`);
+}
+
 function openLoadModal() {
   renderLoadModal();
   els.loadModal.classList.remove("hidden");
 }
 
-function renderLoadModal() {
+function openSaveModal() {
+  renderSaveModal();
+  els.saveModal.classList.remove("hidden");
+}
+
+function renderLoadModal(message = "") {
   const summary = savedGameSummary();
   els.loadConfirmButton.disabled = !summary;
-  if (!summary) {
-    els.loadSummary.innerHTML = `<strong>No saved journal</strong><span>Start a new game to create one.</span>`;
-    return;
+  els.loadSummary.innerHTML = summary
+    ? `
+      <strong>Latest: ${summary.location}</strong>
+      <span>${summary.partyCount} partner${summary.partyCount === 1 ? "" : "s"} / ${summary.caught} archived / ${formatPlaytime(summary.playtime)}</span>
+      <span>${formatSaveDate(summary.savedAt)} at ${formatSaveTime(summary.savedAt)}</span>
+    `
+    : `<strong>${message || (hasCorruptSaves() ? "No usable save" : "No saved journal")}</strong><span>${hasCorruptSaves() ? "Delete corrupt slots below or start a fresh journal." : "Start a new game to create one."}</span>`;
+  els.loadSlotList.innerHTML = allSaveSlotIds()
+    .map((slotId) => slotCardMarkup(slotId, "load"))
+    .join("");
+  bindSlotButtons(els.loadSlotList, "load");
+}
+
+function renderSaveModal() {
+  if (!els.saveSlotList) return;
+  els.saveSlotList.innerHTML = MANUAL_SAVE_SLOTS.map((slotId) =>
+    slotCardMarkup(slotId, "save")
+  ).join("");
+  bindSlotButtons(els.saveSlotList, "save");
+}
+
+function slotCardMarkup(slotId, action) {
+  const entry = readSlotRecord(slotId);
+  const isManualAction = action === "save";
+  const className = `slot-card ${entry.status}`;
+  const primaryLabel = isManualAction ? "Save" : "Load";
+  const primaryDisabled =
+    (isManualAction && !state.party.length) ||
+    (!isManualAction && entry.status !== "ok") ||
+    (isManualAction && slotId === AUTOSAVE_SLOT_ID);
+  const deleteDisabled = entry.status === "empty";
+
+  return `
+    <article class="${className}">
+      <div class="slot-copy">
+        <strong>${slotLabel(slotId)}</strong>
+        ${slotPreviewMarkup(entry)}
+      </div>
+      <div class="slot-actions">
+        <button class="command-button" data-slot-action="${action}" data-slot-id="${slotId}" ${primaryDisabled ? "disabled" : ""}>${primaryLabel}</button>
+        <button class="danger-button" data-slot-action="delete" data-slot-id="${slotId}" ${deleteDisabled ? "disabled" : ""}>Delete</button>
+      </div>
+    </article>
+  `;
+}
+
+function slotPreviewMarkup(entry) {
+  if (entry.status === "empty") {
+    return `<span>Empty slot</span><span>No timestamp yet.</span>`;
   }
 
-  els.loadSummary.innerHTML = `
-    <strong>${summary.place}</strong>
-    <span>${summary.party} partner${summary.party === 1 ? "" : "s"} in party</span>
-    <span>${summary.caught} creature${summary.caught === 1 ? "" : "s"} archived</span>
-    <span>${summary.petals} petals</span>
-    <span>Started ${formatSaveDate(summary.startedAt)}</span>
+  if (entry.status === "corrupt") {
+    return `<span>Corrupt save data</span><span>This slot cannot be loaded.</span>`;
+  }
+
+  const preview = entry.record.preview;
+  const party = preview.party?.length
+    ? preview.party.map((mon) => `${mon.name} Lv ${mon.level}`).join(", ")
+    : "No party";
+  return `
+    <span>${preview.location} / ${formatPlaytime(preview.playtime)}</span>
+    <span>${formatSaveDate(preview.savedAt)} at ${formatSaveTime(preview.savedAt)}</span>
+    <span>${party}</span>
+    <span>${preview.petals} petals / ${preview.caught} archived / ${Object.keys(preview.storyFlags || {}).length} story flags</span>
   `;
+}
+
+function bindSlotButtons(root, modeName) {
+  root.querySelectorAll("[data-slot-action]").forEach((button) => {
+    const slotId = button.dataset.slotId;
+    const action = button.dataset.slotAction;
+    if (action === "save") {
+      button.addEventListener("click", () => {
+        saveGame(true, slotId);
+        renderSaveModal();
+      });
+    } else if (action === "load") {
+      button.addEventListener("click", () => loadSaveSlot(slotId));
+    } else if (action === "delete") {
+      button.addEventListener("click", () => {
+        deleteSaveSlot(slotId);
+        if (modeName === "save") renderSaveModal();
+        else renderLoadModal();
+      });
+    }
+  });
 }
 
 function closeUtilityModals() {
   els.loadModal.classList.add("hidden");
+  els.saveModal.classList.add("hidden");
   els.settingsModal.classList.add("hidden");
   els.creditsModal.classList.add("hidden");
 }
@@ -617,7 +938,7 @@ function closeCreditsModal() {
 }
 
 function quitGame() {
-  if (state.party.length) saveGame(false);
+  if (state.party.length) saveGame(false, currentSlotId || AUTOSAVE_SLOT_ID, { confirmOverwrite: false });
   renderTitleScreen("Journal safe. Close the browser tab to exit.");
 }
 
@@ -644,12 +965,11 @@ function resumeGame() {
 
 function pauseSave() {
   if (!state.party.length) return;
-  saveGame(true);
-  renderTitleScreen();
+  openSaveModal();
 }
 
 function returnToTitle() {
-  if (state.party.length) saveGame(false);
+  if (state.party.length) saveGame(false, currentSlotId || AUTOSAVE_SLOT_ID, { confirmOverwrite: false });
   battle = null;
   mode = state.party.length ? "world" : "starter";
   els.battle.classList.add("hidden");
@@ -680,6 +1000,13 @@ function formatSaveDate(value) {
     month: "short",
     day: "numeric",
     year: "numeric"
+  });
+}
+
+function formatSaveTime(value) {
+  return new Date(value).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
   });
 }
 
@@ -760,6 +1087,7 @@ function buildWorld() {
       if (!state.flags.miraGift) {
         state.flags.miraGift = true;
         state.inventory.capsules += 3;
+        markCollectedItem("mira-capsule-gift");
         showDialogue("Ranger Mira", [
           "Your map mark is fresh. Take three spare charm capsules.",
           "Tall grass rustles when a wild Pollymon is close."
@@ -1008,6 +1336,7 @@ function chooseStarter(speciesId) {
   state.seen.add(speciesId);
   state.caught.add(speciesId);
   state.flags.choseStarter = true;
+  state.quests.starterChosen = true;
   appScreen = "game";
   mode = "world";
   els.titleScreen.classList.add("hidden");
@@ -1033,6 +1362,7 @@ function visitMarket() {
   if (state.inventory.petals >= 20) {
     state.inventory.petals -= 20;
     state.inventory.capsules += 3;
+    markCollectedItem("capsule-stall-bundle");
     showDialogue("Capsule Stall", [
       "Three charm capsules slide into your bag.",
       "The stall keeper marks your journal with fresh amber ink."
@@ -1275,6 +1605,12 @@ function typeEffect(moveType, targetType) {
 async function checkEnemyFainted() {
   if (!battle || battle.enemy.hp > 0) return false;
   pushBattleLog(`${displayName(battle.enemy)} settled down.`);
+  recordEnemyDefeat({
+    type: battle.type,
+    trainerId: battle.trainerId || null,
+    speciesId: battle.enemy.speciesId,
+    level: battle.enemy.level
+  });
   renderBattle();
   await sleep(650);
 
@@ -1330,6 +1666,7 @@ function finishBattle(won) {
     state.inventory.petals += baseReward;
     if (trainer) {
       state.flags[`${battle.trainerId}Defeated`] = true;
+      updateQuestProgress();
       pushBattleLog(`${trainer.name} shared ${baseReward} petals.`);
     } else {
       pushBattleLog(`You gathered ${baseReward} petals from the grass.`);
@@ -2028,6 +2365,7 @@ function setupEvents() {
     if (event.key === "Escape") {
       event.preventDefault();
       if (!els.settingsModal.classList.contains("hidden")) closeSettingsModal();
+      else if (!els.saveModal.classList.contains("hidden")) els.saveModal.classList.add("hidden");
       else if (!els.loadModal.classList.contains("hidden")) els.loadModal.classList.add("hidden");
       else if (!els.creditsModal.classList.contains("hidden")) closeCreditsModal();
       else if (mode === "paused") resumeGame();
@@ -2094,6 +2432,7 @@ function setupEvents() {
   els.returnTitleButton.addEventListener("click", returnToTitle);
   els.loadConfirmButton.addEventListener("click", continueSavedGame);
   els.closeLoadButton.addEventListener("click", () => els.loadModal.classList.add("hidden"));
+  els.closeSaveButton.addEventListener("click", () => els.saveModal.classList.add("hidden"));
   els.settingsDoneButton.addEventListener("click", closeSettingsModal);
   els.closeCreditsButton.addEventListener("click", closeCreditsModal);
   els.autosaveSetting.addEventListener("change", () => {
@@ -2119,17 +2458,20 @@ function setupEvents() {
     if (battle && activeMon()?.hp <= 0) return;
     els.switchModal.classList.add("hidden");
   });
-  els.saveButton.addEventListener("click", () => saveGame(true));
+  els.saveButton.addEventListener("click", openSaveModal);
   els.resetButton.addEventListener("click", startNewGame);
 }
 
 function boot() {
   setupEvents();
   applySettings();
+  migrateLegacySave();
   renderAll();
   showTitleScreen();
   window.setInterval(() => {
-    if (settings.autosave && mode === "world" && state.party.length) saveGame(false);
+    if (settings.autosave && mode === "world" && state.party.length) {
+      saveGame(false, AUTOSAVE_SLOT_ID, { confirmOverwrite: false });
+    }
   }, 45000);
   requestAnimationFrame(loop);
 }

@@ -679,6 +679,7 @@ button:disabled {
 }
 
 .load-summary,
+.slot-list,
 .credits-copy,
 .settings-list {
   display: grid;
@@ -693,6 +694,59 @@ button:disabled {
   color: var(--muted);
   padding: 12px;
   line-height: 1.5;
+}
+
+.load-summary span {
+  display: block;
+}
+
+.slot-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.055);
+  padding: 12px;
+}
+
+.slot-card.corrupt {
+  border-color: rgba(255, 107, 107, 0.45);
+}
+
+.slot-card.empty {
+  opacity: 0.78;
+}
+
+.slot-copy {
+  min-width: 0;
+}
+
+.slot-copy strong,
+.slot-copy span {
+  display: block;
+}
+
+.slot-copy span {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.42;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+.slot-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  min-width: 118px;
+}
+
+.slot-actions .command-button,
+.slot-actions .ghost-button,
+.slot-actions .danger-button {
+  min-height: 34px;
 }
 
 .settings-list {
@@ -923,6 +977,15 @@ body.reduce-motion *::after {
 
   .modal-actions {
     grid-template-columns: 1fr;
+  }
+
+  .slot-card {
+    grid-template-columns: 1fr;
+  }
+
+  .slot-actions {
+    grid-template-columns: 1fr 1fr;
+    min-width: 0;
   }
 }
 
