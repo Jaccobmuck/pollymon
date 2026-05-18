@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pollymon</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>Pollymon</span>
+        </div>
+        <div class="status-strip">
+          <span id="placeName">Sprig Village</span>
+          <span id="coinCount">0 petals</span>
+          <span id="capsuleCount">0 capsules</span>
+        </div>
+      </header>
+
+      <main class="game-shell">
+        <section class="screen-wrap" aria-label="Pollymon game screen">
+          <canvas id="world" width="960" height="576"></canvas>
+          <div id="toast" class="toast hidden"></div>
+          <div id="dialogue" class="dialogue hidden">
+            <div id="dialogueSpeaker" class="dialogue-speaker"></div>
+            <div id="dialogueText" class="dialogue-text"></div>
+            <button id="dialogueNext" class="small-command">Next</button>
+          </div>
+
+          <div id="battle" class="battle-panel hidden" aria-live="polite">
+            <div class="battle-stage">
+              <div class="combatant enemy-side">
+                <div id="enemySprite" class="mon-sprite"></div>
+                <div class="battle-card">
+                  <div class="battle-card-row">
+                    <strong id="enemyName"></strong>
+                    <span id="enemyLevel"></span>
+                  </div>
+                  <div class="hp-track">
+                    <span id="enemyHpBar"></span>
+                  </div>
+                  <div id="enemyHpText" class="mini-text"></div>
+                </div>
+              </div>
+
+              <div class="combatant ally-side">
+                <div id="allySprite" class="mon-sprite"></div>
+                <div class="battle-card">
+                  <div class="battle-card-row">
+                    <strong id="allyName"></strong>
+                    <span id="allyLevel"></span>
+                  </div>
+                  <div class="hp-track">
+                    <span id="allyHpBar"></span>
+                  </div>
+                  <div id="allyHpText" class="mini-text"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="battle-console">
+              <div id="battleLog" class="battle-log"></div>
+              <div id="moveGrid" class="move-grid"></div>
+              <div class="battle-actions">
+                <button id="captureButton" class="command-button">Capsule</button>
+                <button id="tonicButton" class="command-button">Tonic</button>
+                <button id="switchButton" class="command-button">Party</button>
+                <button id="runButton" class="command-button">Run</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="side-panel" aria-label="Game panels">
+          <div class="tabs" role="tablist" aria-label="Pollymon panels">
+            <button class="tab active" data-panel="party" role="tab">Party</button>
+            <button class="tab" data-panel="guide" role="tab">Guide</button>
+            <button class="tab" data-panel="bag" role="tab">Bag</button>
+          </div>
+          <section id="partyPanel" class="panel-body active" role="tabpanel"></section>
+          <section id="guidePanel" class="panel-body" role="tabpanel"></section>
+          <section id="bagPanel" class="panel-body" role="tabpanel"></section>
+          <div class="save-row">
+            <button id="saveButton" class="command-button">Save</button>
+            <button id="resetButton" class="ghost-button">New</button>
+          </div>
+        </aside>
+      </main>
+
+      <nav class="touch-controls" aria-label="Movement controls">
+        <button data-dir="up">N</button>
+        <button data-dir="left">W</button>
+        <button id="actionButton">A</button>
+        <button data-dir="right">E</button>
+        <button data-dir="down">S</button>
+      </nav>
+
+      <div id="starterModal" class="modal">
+        <div class="modal-sheet starter-sheet">
+          <div class="modal-kicker">Sprig Village Lab</div>
+          <h1>Choose a partner</h1>
+          <p>
+            Ranger Mira opens three field lanterns. Inside each one, a young
+            Pollymon waits for its first map mark.
+          </p>
+          <div id="starterChoices" class="starter-grid"></div>
+        </div>
+      </div>
+
+      <div id="switchModal" class="modal hidden">
+        <div class="modal-sheet">
+          <div class="modal-kicker">Party</div>
+          <h2>Pick a Pollymon</h2>
+          <div id="switchList" class="switch-list"></div>
+          <button id="closeSwitch" class="ghost-button full-width">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="game.js"></script>
+  </body>
+</html>

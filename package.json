@@ -1,0 +1,21 @@
+{
+  "name": "pollymon",
+  "version": "0.1.0",
+  "description": "An original browser monster-catching RPG built with HTML5 Canvas.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "node scripts/dev-server.mjs",
+    "start": "node scripts/dev-server.mjs",
+    "build": "node scripts/build.mjs",
+    "lint": "node scripts/lint.mjs",
+    "format": "node scripts/format.mjs",
+    "format:check": "node scripts/format.mjs --check",
+    "test": "node tests/smoke.test.mjs",
+    "version:bump": "node scripts/version.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
