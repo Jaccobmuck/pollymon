@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Placeholder item icon">
+  <rect width="32" height="32" fill="#20302e"/>
+  <path d="M12 5h8v5l5 7c4 7-1 12-9 12S3 24 7 17l5-7z" fill="#5ec2e7"/>
+  <rect x="12" y="5" width="8" height="4" fill="#eef4ef"/>
+  <path d="M10 19c3 3 9 3 12 0" fill="none" stroke="#eef4ef" stroke-width="2" stroke-linecap="round"/>
+</svg>

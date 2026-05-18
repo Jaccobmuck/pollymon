@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Placeholder player sprite">
+  <rect width="32" height="32" fill="#20302e"/>
+  <ellipse cx="16" cy="27" rx="8" ry="3" fill="#101817" opacity=".5"/>
+  <rect x="11" y="13" width="10" height="11" fill="#5dd39e"/>
+  <rect x="12" y="7" width="8" height="7" fill="#e5b48d"/>
+  <rect x="10" y="5" width="12" height="4" fill="#ffd166"/>
+  <rect x="13" y="10" width="2" height="2" fill="#101817"/>
+  <rect x="18" y="10" width="2" height="2" fill="#101817"/>
+</svg>

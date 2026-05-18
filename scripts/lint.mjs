@@ -1,24 +1,34 @@
 import { readFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
+import { extname } from "node:path";
 
-const textFiles = [
-  "README.md",
-  "CHANGELOG.md",
-  "CREDITS.md",
-  "ATTRIBUTION.md",
-  "LICENSE",
-  "package.json",
-  "index.html",
-  "src/index.html",
-  "src/styles.css",
-  "src/game.js",
-  "scripts/dev-server.mjs",
-  "scripts/build.mjs",
-  "scripts/format.mjs",
-  "scripts/lint.mjs",
-  "scripts/version.mjs",
-  "tests/smoke.test.mjs"
-];
+const skipDirs = new Set([".git", "dist", "node_modules"]);
+const textExtensions = new Set([".css", ".html", ".js", ".json", ".md", ".mjs", ".svg"]);
+const textNames = new Set([
+  ".editorconfig",
+  ".gitattributes",
+  ".gitignore",
+  ".npmrc",
+  "LICENSE"
+]);
+const jsExtensions = new Set([".js", ".mjs"]);
+
+async function collectFiles(dir = ".") {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const path = dir === "." ? entry.name : `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (!skipDirs.has(entry.name)) files.push(...(await collectFiles(path)));
+      continue;
+    }
+    if (entry.isFile()) files.push(path);
+  }
+
+  return files.sort();
+}
 
 const forbiddenAssetNames = [
   "bulbasaur",
@@ -30,6 +40,10 @@ const forbiddenAssetNames = [
 ];
 
 const failures = [];
+const allFiles = await collectFiles();
+const textFiles = allFiles.filter(
+  (file) => textExtensions.has(extname(file)) || textNames.has(file.split("/").at(-1))
+);
 
 for (const file of textFiles) {
   const content = await readFile(file, "utf8");
@@ -46,7 +60,7 @@ for (const term of forbiddenAssetNames) {
   }
 }
 
-for (const file of ["src/game.js", "scripts/dev-server.mjs", "scripts/build.mjs", "tests/smoke.test.mjs"]) {
+for (const file of allFiles.filter((candidate) => jsExtensions.has(extname(candidate)))) {
   const result = spawnSync(process.execPath, ["--check", file], { stdio: "pipe", encoding: "utf8" });
   if (result.status !== 0) failures.push(`${file}: ${result.stderr || result.stdout}`);
 }

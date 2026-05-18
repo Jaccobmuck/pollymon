@@ -3,6 +3,7 @@
 ## Game
 
 - Concept, code, UI, creature roster, writing, and generated SVG-style creature art: Pollymon contributors.
+- Placeholder assets under `assets/`: Pollymon contributors.
 
 ## Framework
 

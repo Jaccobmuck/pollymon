@@ -1,28 +1,39 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
+import { extname } from "node:path";
 
 const checkOnly = process.argv.includes("--check");
-const files = [
-  "README.md",
-  "CHANGELOG.md",
-  "CREDITS.md",
-  "ATTRIBUTION.md",
-  "LICENSE",
-  "package.json",
-  "index.html",
-  "src/index.html",
-  "src/styles.css",
-  "src/game.js",
-  "scripts/dev-server.mjs",
-  "scripts/build.mjs",
-  "scripts/format.mjs",
-  "scripts/lint.mjs",
-  "scripts/version.mjs",
-  "tests/smoke.test.mjs"
-];
+const skipDirs = new Set([".git", "dist", "node_modules"]);
+const textExtensions = new Set([".css", ".html", ".js", ".json", ".md", ".mjs", ".svg"]);
+const textNames = new Set([
+  ".editorconfig",
+  ".gitattributes",
+  ".gitignore",
+  ".npmrc",
+  "LICENSE"
+]);
+
+async function collectFiles(dir = ".") {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const path = dir === "." ? entry.name : `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (!skipDirs.has(entry.name)) files.push(...(await collectFiles(path)));
+      continue;
+    }
+    if (entry.isFile() && (textExtensions.has(extname(entry.name)) || textNames.has(entry.name))) {
+      files.push(path);
+    }
+  }
+
+  return files.sort();
+}
 
 const changed = [];
 
-for (const file of files) {
+for (const file of await collectFiles()) {
   const original = await readFile(file, "utf8");
   const formatted = `${original.replace(/\r\n/g, "\n").replace(/[ \t]+$/gm, "").trimEnd()}\n`;
   if (formatted !== original) {
