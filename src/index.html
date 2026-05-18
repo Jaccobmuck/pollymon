@@ -14,7 +14,9 @@
           <span>Pollymon</span>
         </div>
         <div class="status-strip">
+          <span id="playerNameTag">Ranger</span>
           <span id="placeName">Sprig Village</span>
+          <span id="coordTag">11, 21</span>
           <span id="coinCount">0 petals</span>
           <span id="capsuleCount">0 capsules</span>
           <button id="pauseButton" class="topbar-button">Menu</button>
@@ -97,6 +99,7 @@
         <button id="actionButton">A</button>
         <button data-dir="right">E</button>
         <button data-dir="down">S</button>
+        <button id="sprintButton">Run</button>
       </nav>
 
       <div id="titleScreen" class="title-screen">
@@ -133,11 +136,42 @@
           <div class="menu-list">
             <button id="resumeButton" class="menu-button">Resume</button>
             <button id="pauseSaveButton" class="menu-button">Save</button>
+            <button id="pauseProfileButton" class="menu-button">Player Profile</button>
             <button id="pausePartyButton" class="menu-button">Party</button>
             <button id="pauseInventoryButton" class="menu-button">Inventory</button>
             <button id="pauseArchiveButton" class="menu-button">Creature Archive</button>
             <button id="pauseSettingsButton" class="menu-button">Options</button>
             <button id="returnTitleButton" class="danger-button">Return to Title</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="profileModal" class="modal hidden">
+        <div class="modal-sheet profile-sheet">
+          <div class="modal-kicker">Player Profile</div>
+          <h2>Ranger Card</h2>
+          <div class="profile-grid">
+            <div id="profileSprite" class="profile-sprite" aria-hidden="true"></div>
+            <div class="profile-fields">
+              <label class="field-row">
+                <span>Name</span>
+                <input id="playerNameInput" maxlength="18" autocomplete="off" />
+              </label>
+              <label class="field-row">
+                <span>Sprite</span>
+                <select id="playerSpriteSelect">
+                  <option value="sprig">Sprig Ranger</option>
+                  <option value="ember">Ember Ranger</option>
+                  <option value="tide">Tide Ranger</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div id="profileStats" class="profile-stats"></div>
+          <div id="achievementList" class="achievement-list"></div>
+          <div class="modal-actions">
+            <button id="saveProfileButton" class="command-button">Save Profile</button>
+            <button id="closeProfileButton" class="ghost-button">Close</button>
           </div>
         </div>
       </div>
@@ -192,6 +226,11 @@
               </span>
               <input id="confirmNewGameSetting" type="checkbox" />
             </label>
+            <div class="control-settings">
+              <strong>Input Remapping</strong>
+              <small>Click a control, then press a key.</small>
+              <div id="controlBindings" class="control-bindings"></div>
+            </div>
           </div>
           <div class="modal-actions">
             <button id="settingsDoneButton" class="command-button">Done</button>

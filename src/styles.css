@@ -295,7 +295,7 @@ button {
 
 .touch-controls {
   display: none;
-  grid-template-columns: repeat(5, 54px);
+  grid-template-columns: repeat(6, 54px);
   justify-content: center;
   gap: 8px;
 }
@@ -349,6 +349,11 @@ button {
 .danger-button:hover,
 .topbar-button:hover {
   filter: brightness(1.07);
+}
+
+.touch-controls button.active {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
 }
 
 .touch-controls button:active,
@@ -681,7 +686,9 @@ button:disabled {
 .load-summary,
 .slot-list,
 .credits-copy,
-.settings-list {
+.settings-list,
+.profile-stats,
+.achievement-list {
   display: grid;
   gap: 10px;
   margin: 14px 0;
@@ -762,6 +769,123 @@ button:disabled {
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.055);
   padding: 12px;
+}
+
+.field-row {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.field-row input,
+.field-row select {
+  min-height: 42px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  font: inherit;
+  padding: 8px 10px;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: 128px 1fr;
+  gap: 14px;
+  align-items: center;
+  margin: 14px 0;
+}
+
+.profile-sprite {
+  width: 128px;
+  height: 128px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(transparent 49%, rgba(255, 255, 255, 0.06) 50%),
+    linear-gradient(90deg, transparent 49%, rgba(255, 255, 255, 0.06) 50%),
+    rgba(255, 255, 255, 0.055);
+  background-size: 16px 16px;
+}
+
+.profile-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stat-pill,
+.achievement-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.055);
+  padding: 10px;
+}
+
+.stat-pill strong,
+.stat-pill span,
+.achievement-card strong,
+.achievement-card span {
+  display: block;
+}
+
+.stat-pill span,
+.achievement-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-top: 3px;
+}
+
+.achievement-card.locked {
+  opacity: 0.55;
+}
+
+.control-settings {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.055);
+  padding: 12px;
+}
+
+.control-settings small {
+  color: var(--muted);
+}
+
+.control-bindings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.control-bind {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink);
+  cursor: pointer;
+  padding: 8px 10px;
+}
+
+.control-bind span {
+  color: var(--accent);
+  font-weight: 900;
 }
 
 .setting-row small {
@@ -964,7 +1088,7 @@ body.reduce-motion *::after {
   }
 
   .touch-controls {
-    grid-template-columns: repeat(5, minmax(44px, 54px));
+    grid-template-columns: repeat(6, minmax(44px, 54px));
   }
 
   .title-shell {
@@ -986,6 +1110,12 @@ body.reduce-motion *::after {
   .slot-actions {
     grid-template-columns: 1fr 1fr;
     min-width: 0;
+  }
+
+  .profile-grid,
+  .profile-stat-grid,
+  .control-bindings {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -61,6 +61,8 @@ class MockElement {
 const ids = [
   "world",
   "placeName",
+  "playerNameTag",
+  "coordTag",
   "coinCount",
   "capsuleCount",
   "pauseButton",
@@ -97,6 +99,7 @@ const ids = [
   "switchList",
   "closeSwitch",
   "actionButton",
+  "sprintButton",
   "titleScreen",
   "titleStatus",
   "newGameButton",
@@ -108,11 +111,20 @@ const ids = [
   "pauseMenu",
   "resumeButton",
   "pauseSaveButton",
+  "pauseProfileButton",
   "pausePartyButton",
   "pauseInventoryButton",
   "pauseArchiveButton",
   "pauseSettingsButton",
   "returnTitleButton",
+  "profileModal",
+  "profileSprite",
+  "playerNameInput",
+  "playerSpriteSelect",
+  "profileStats",
+  "achievementList",
+  "saveProfileButton",
+  "closeProfileButton",
   "loadModal",
   "loadSummary",
   "loadSlotList",
@@ -125,6 +137,7 @@ const ids = [
   "autosaveSetting",
   "motionSetting",
   "confirmNewGameSetting",
+  "controlBindings",
   "settingsDoneButton",
   "creditsModal",
   "closeCreditsButton"
@@ -134,6 +147,7 @@ const elements = Object.fromEntries(ids.map((id) => [id, new MockElement(id)]));
 elements.starterModal.classList.add("hidden");
 elements.switchModal.classList.add("hidden");
 elements.pauseMenu.classList.add("hidden");
+elements.profileModal.classList.add("hidden");
 elements.loadModal.classList.add("hidden");
 elements.saveModal.classList.add("hidden");
 elements.settingsModal.classList.add("hidden");
@@ -180,6 +194,9 @@ const context = {
     }
   },
   Math,
+  navigator: {
+    getGamepads: () => []
+  },
   performance: { now: () => 1000 },
   requestAnimationFrame(callback) {
     if (++animationFrames < 2) setTimeout(callback, 0);
@@ -226,22 +243,31 @@ const result = vm.runInContext(
   `({
     mode,
     appScreen,
+    playerName: state.player.name,
+    playerMap: state.player.currentMap,
+    coordinates: [state.player.x, state.player.y],
     partyLength: state.party.length,
     battleType: battle.type,
     enemySpecies: battle.enemy.speciesId,
     caughtStarter: state.caught.has("frondle"),
-    titleHidden: els.titleScreen.classList.contains("hidden")
+    titleHidden: els.titleScreen.classList.contains("hidden"),
+    achievementCount: state.achievements.length
   })`,
   context
 );
 
 assert.equal(result.mode, "battle");
 assert.equal(result.appScreen, "game");
+assert.equal(result.playerName, "Ranger");
+assert.equal(result.playerMap, "Sprig Village");
+assert.equal(result.coordinates[0], 11);
+assert.equal(result.coordinates[1], 21);
 assert.equal(result.partyLength, 1);
 assert.equal(result.battleType, "wild");
 assert.ok(result.enemySpecies);
 assert.equal(result.caughtStarter, true);
 assert.equal(result.titleHidden, true);
+assert.ok(result.achievementCount > 0);
 assert.ok(saves.length > 0);
 assert.match(elements.partyPanel.innerHTML, /Frondle/);
 assert.match(elements.battleLog.innerHTML, /wild/i);
@@ -283,6 +309,47 @@ assert.equal(shellResult.latestLocation, "Sprig Village");
 assert.match(shellResult.loadPreview, /Slot 1/);
 assert.match(shellResult.loadPreview, /Frondle/);
 assert.ok(shellResult.playtime >= 0);
+
+vm.runInContext(
+  `
+    hideTitleScreen();
+    mode = "world";
+    state.player.x = 11;
+    state.player.y = 21;
+    attemptMove("up", true);
+    els.playerNameInput.value = "Jay";
+    els.playerSpriteSelect.value = "tide";
+    saveProfile();
+    settings.controls.up = "i";
+    saveSettings();
+    applySettings();
+    openProfileModal();
+  `,
+  context
+);
+
+const playerResult = vm.runInContext(
+  `({
+    name: state.player.name,
+    sprite: state.player.sprite,
+    y: state.player.y,
+    sprintSteps: state.stats.sprintSteps,
+    coordsHud: els.coordTag.textContent,
+    controlKey: settings.controls.up,
+    profileVisible: !els.profileModal.classList.contains("hidden"),
+    profileHasStats: els.profileStats.innerHTML.includes("Sprint Steps")
+  })`,
+  context
+);
+
+assert.equal(playerResult.name, "Jay");
+assert.equal(playerResult.sprite, "tide");
+assert.equal(playerResult.y, 20);
+assert.equal(playerResult.sprintSteps, 1);
+assert.equal(playerResult.coordsHud, "11, 20");
+assert.equal(playerResult.controlKey, "i");
+assert.equal(playerResult.profileVisible, true);
+assert.equal(playerResult.profileHasStats, true);
 
 vm.runInContext(
   `

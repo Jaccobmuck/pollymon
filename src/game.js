@@ -18,6 +18,8 @@ const ctx = canvas.getContext("2d");
 
 const els = {
   placeName: document.getElementById("placeName"),
+  playerNameTag: document.getElementById("playerNameTag"),
+  coordTag: document.getElementById("coordTag"),
   coinCount: document.getElementById("coinCount"),
   capsuleCount: document.getElementById("capsuleCount"),
   pauseButton: document.getElementById("pauseButton"),
@@ -54,6 +56,7 @@ const els = {
   switchList: document.getElementById("switchList"),
   closeSwitch: document.getElementById("closeSwitch"),
   actionButton: document.getElementById("actionButton"),
+  sprintButton: document.getElementById("sprintButton"),
   titleScreen: document.getElementById("titleScreen"),
   titleStatus: document.getElementById("titleStatus"),
   newGameButton: document.getElementById("newGameButton"),
@@ -65,11 +68,20 @@ const els = {
   pauseMenu: document.getElementById("pauseMenu"),
   resumeButton: document.getElementById("resumeButton"),
   pauseSaveButton: document.getElementById("pauseSaveButton"),
+  pauseProfileButton: document.getElementById("pauseProfileButton"),
   pausePartyButton: document.getElementById("pausePartyButton"),
   pauseInventoryButton: document.getElementById("pauseInventoryButton"),
   pauseArchiveButton: document.getElementById("pauseArchiveButton"),
   pauseSettingsButton: document.getElementById("pauseSettingsButton"),
   returnTitleButton: document.getElementById("returnTitleButton"),
+  profileModal: document.getElementById("profileModal"),
+  profileSprite: document.getElementById("profileSprite"),
+  playerNameInput: document.getElementById("playerNameInput"),
+  playerSpriteSelect: document.getElementById("playerSpriteSelect"),
+  profileStats: document.getElementById("profileStats"),
+  achievementList: document.getElementById("achievementList"),
+  saveProfileButton: document.getElementById("saveProfileButton"),
+  closeProfileButton: document.getElementById("closeProfileButton"),
   loadModal: document.getElementById("loadModal"),
   loadSummary: document.getElementById("loadSummary"),
   loadSlotList: document.getElementById("loadSlotList"),
@@ -82,6 +94,7 @@ const els = {
   autosaveSetting: document.getElementById("autosaveSetting"),
   motionSetting: document.getElementById("motionSetting"),
   confirmNewGameSetting: document.getElementById("confirmNewGameSetting"),
+  controlBindings: document.getElementById("controlBindings"),
   settingsDoneButton: document.getElementById("settingsDoneButton"),
   creditsModal: document.getElementById("creditsModal"),
   closeCreditsButton: document.getElementById("closeCreditsButton")
@@ -93,6 +106,42 @@ const DIRS = {
   left: { x: -1, y: 0 },
   right: { x: 1, y: 0 }
 };
+
+const CONTROL_ACTIONS = [
+  ["up", "Move Up"],
+  ["down", "Move Down"],
+  ["left", "Move Left"],
+  ["right", "Move Right"],
+  ["interact", "Interact"],
+  ["sprint", "Sprint"],
+  ["pause", "Pause"]
+];
+
+const CONTROL_ALIASES = {
+  up: ["w", "W"],
+  down: ["s", "S"],
+  left: ["a", "A"],
+  right: ["d", "D"],
+  interact: [" "],
+  pause: ["p", "P"]
+};
+
+const PLAYER_SPRITES = {
+  sprig: { hat: "#ffd166", shirt: "#5dd39e", pants: "#2b3440", skin: "#e5b48d" },
+  ember: { hat: "#ffe19a", shirt: "#ff9a55", pants: "#43302e", skin: "#e5b48d" },
+  tide: { hat: "#d7fbff", shirt: "#63c7ee", pants: "#253a56", skin: "#d7a57f" }
+};
+
+const ACHIEVEMENTS = [
+  ["firstPartner", "First Partner", "Choose your first Pollymon."],
+  ["firstSave", "Journal Keeper", "Save a field journal."],
+  ["firstSteps", "Boot Prints", "Walk 10 steps."],
+  ["sprinter", "Trail Runner", "Sprint 10 steps."],
+  ["firstBattle", "Field Tested", "Win a battle."],
+  ["firstCapture", "New Bond", "Capture a wild Pollymon."],
+  ["archiveFive", "Archive Clerk", "Register 5 Pollymon."],
+  ["explorer", "Map Reader", "Visit 30 coordinates."]
+];
 
 const TYPE_COLORS = {
   leaf: "#72d572",
@@ -398,10 +447,25 @@ let toastTimer = 0;
 let lastMoveAt = 0;
 let settings = loadSettings();
 let playSessionStartedAt = Date.now();
+let awaitingControlAction = null;
+let touchSprintActive = false;
+let lastGamepadMoveAt = 0;
+let gamepadActionHeld = false;
 
 function freshState() {
   return {
-    player: { x: 11, y: 21, dir: "down" },
+    player: {
+      name: "Ranger",
+      sprite: "sprig",
+      x: 11,
+      y: 21,
+      dir: "down",
+      spawnPoint: { x: 11, y: 21, map: "Sprig Village" },
+      currentMap: "Sprig Village",
+      isMoving: false,
+      isSprinting: false,
+      animationStartedAt: Date.now()
+    },
     party: [],
     reserve: [],
     inventory: { petals: 30, capsules: 5, tonics: 2 },
@@ -411,6 +475,21 @@ function freshState() {
     quests: { starterChosen: false, mapMarks: 0 },
     defeatedEnemies: [],
     collectedItems: [],
+    stats: {
+      stepsWalked: 0,
+      sprintSteps: 0,
+      interactions: 0,
+      collisions: 0,
+      battlesWon: 0,
+      wildBattles: 0,
+      trainerBattles: 0,
+      captures: 0,
+      saves: 0,
+      loads: 0,
+      controllerInputs: 0,
+      visitedCoordinates: ["11,21"]
+    },
+    achievements: [],
     steps: 0,
     startedAt: Date.now(),
     playtime: 0
@@ -421,14 +500,25 @@ function defaultSettings() {
   return {
     autosave: true,
     confirmNewGame: true,
-    reducedMotion: false
+    reducedMotion: false,
+    controls: {
+      up: "ArrowUp",
+      down: "ArrowDown",
+      left: "ArrowLeft",
+      right: "ArrowRight",
+      interact: "Enter",
+      sprint: "Shift",
+      pause: "Escape"
+    }
   };
 }
 
 function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    return { ...defaultSettings(), ...(raw ? JSON.parse(raw) : {}) };
+    const defaults = defaultSettings();
+    const parsed = raw ? JSON.parse(raw) : {};
+    return { ...defaults, ...parsed, controls: { ...defaults.controls, ...(parsed.controls || {}) } };
   } catch (error) {
     console.warn("Could not load settings", error);
     return defaultSettings();
@@ -509,9 +599,21 @@ function reviveSavedState(saved) {
   parsed.party = (parsed.party || []).map(reviveMon);
   parsed.reserve = parsed.reserve.map(reviveMon);
   parsed.player = parsed.player || { x: 11, y: 21, dir: "down" };
+  parsed.player = {
+    ...freshState().player,
+    ...parsed.player,
+    spawnPoint: { ...freshState().player.spawnPoint, ...(parsed.player.spawnPoint || {}) }
+  };
   parsed.steps = parsed.steps || 0;
   parsed.startedAt = parsed.startedAt || Date.now();
   parsed.playtime = parsed.playtime || 0;
+  parsed.stats = {
+    ...freshState().stats,
+    ...(parsed.stats || {}),
+    visitedCoordinates: parsed.stats?.visitedCoordinates || [`${parsed.player.x},${parsed.player.y}`]
+  };
+  parsed.achievements = parsed.achievements || [];
+  parsed.player.currentMap = summaryPlace(parsed.player.x, parsed.player.y);
   return parsed;
 }
 
@@ -521,7 +623,9 @@ function savePreviewFromState(payload, slotId, savedAt) {
   return {
     slotId,
     savedAt,
+    playerName: payload.player?.name || "Ranger",
     location,
+    coordinates: payload.player ? { x: payload.player.x, y: payload.player.y } : { x: 11, y: 21 },
     party: party.map((mon) => ({
       name: SPECIES[mon.speciesId]?.name || "Unknown",
       level: mon.level || 1
@@ -604,7 +708,9 @@ function loadGame(slotId = null) {
     applySettings();
     currentSlotId = record.slotId;
     playSessionStartedAt = Date.now();
-    return reviveSavedState(record.payload.state);
+    const loaded = reviveSavedState(record.payload.state);
+    loaded.stats.loads = (loaded.stats.loads || 0) + 1;
+    return loaded;
   } catch (error) {
     console.warn("Could not load save", error);
     return null;
@@ -625,6 +731,7 @@ function saveGame(show = true, slotId = DEFAULT_MANUAL_SLOT, options = {}) {
     if (!ok) return false;
   }
 
+  if (kind === "manual") trackStatistic("saves");
   const record = createSaveRecord(slotId, kind);
   localStorage.setItem(saveSlotStorageKey(slotId), JSON.stringify(record));
   writeSaveIndex(slotId);
@@ -676,6 +783,7 @@ function updateQuestProgress() {
     starterChosen: Boolean(state.flags.choseStarter),
     mapMarks: Number(state.flags.renDefeated || false) + Number(state.flags.valaDefeated || false)
   };
+  updateAchievements();
 }
 
 function markCollectedItem(itemId) {
@@ -688,6 +796,145 @@ function recordEnemyDefeat(entry) {
     at: new Date().toISOString()
   });
   state.defeatedEnemies = state.defeatedEnemies.slice(-100);
+}
+
+function trackStatistic(name, amount = 1) {
+  state.stats[name] = (state.stats[name] || 0) + amount;
+  updateAchievements();
+}
+
+function updatePlayerLocation() {
+  state.player.currentMap = summaryPlace(state.player.x, state.player.y);
+  const coordinate = `${state.player.x},${state.player.y}`;
+  if (!state.stats.visitedCoordinates.includes(coordinate)) {
+    state.stats.visitedCoordinates.push(coordinate);
+  }
+}
+
+function updateAchievements() {
+  const unlocked = new Set(state.achievements || []);
+  const checks = {
+    firstPartner: state.party.length > 0,
+    firstSave: (state.stats.saves || 0) > 0,
+    firstSteps: (state.stats.stepsWalked || 0) >= 10,
+    sprinter: (state.stats.sprintSteps || 0) >= 10,
+    firstBattle: (state.stats.battlesWon || 0) > 0,
+    firstCapture: (state.stats.captures || 0) > 0,
+    archiveFive: state.caught.size >= 5,
+    explorer: (state.stats.visitedCoordinates || []).length >= 30
+  };
+
+  for (const [id] of ACHIEVEMENTS) {
+    if (checks[id]) unlocked.add(id);
+  }
+  state.achievements = [...unlocked];
+}
+
+function openProfileModal() {
+  renderProfile();
+  els.profileModal.classList.remove("hidden");
+}
+
+function closeProfileModal() {
+  els.profileModal.classList.add("hidden");
+}
+
+function saveProfile() {
+  state.player.name = cleanPlayerName(els.playerNameInput.value);
+  state.player.sprite = PLAYER_SPRITES[els.playerSpriteSelect.value]
+    ? els.playerSpriteSelect.value
+    : "sprig";
+  updateHud();
+  renderProfile();
+  showToast("Ranger card updated.");
+}
+
+function cleanPlayerName(value) {
+  const name = String(value || "").trim().replace(/\s+/g, " ").slice(0, 18);
+  return name || "Ranger";
+}
+
+function renderProfile() {
+  updatePlayerLocation();
+  updateAchievements();
+  els.playerNameInput.value = state.player.name;
+  els.playerSpriteSelect.value = state.player.sprite;
+  els.profileSprite.innerHTML = playerSvg(state.player.sprite, "down", false, false, 1.8);
+  els.profileStats.innerHTML = `
+    <div class="profile-stat-grid">
+      ${profileStat("Location", state.player.currentMap)}
+      ${profileStat("Coordinates", `${state.player.x}, ${state.player.y}`)}
+      ${profileStat("Currency", `${state.inventory.petals} petals`)}
+      ${profileStat("Playtime", formatPlaytime(currentPlaytime()))}
+      ${profileStat("Steps", state.stats.stepsWalked)}
+      ${profileStat("Sprint Steps", state.stats.sprintSteps)}
+      ${profileStat("Battles Won", state.stats.battlesWon)}
+      ${profileStat("Captures", state.stats.captures)}
+      ${profileStat("Visited Tiles", state.stats.visitedCoordinates.length)}
+      ${profileStat("Controller Inputs", state.stats.controllerInputs)}
+    </div>
+  `;
+  els.achievementList.innerHTML = ACHIEVEMENTS.map(([id, title, text]) => {
+    const unlocked = state.achievements.includes(id);
+    return `
+      <article class="achievement-card ${unlocked ? "" : "locked"}">
+        <strong>${unlocked ? title : "Locked"}</strong>
+        <span>${text}</span>
+      </article>
+    `;
+  }).join("");
+}
+
+function profileStat(label, value) {
+  return `<div class="stat-pill"><strong>${escapeHtml(value)}</strong><span>${label}</span></div>`;
+}
+
+function renderControlBindings() {
+  els.controlBindings.innerHTML = CONTROL_ACTIONS.map(
+    ([action, label]) => `
+      <button class="control-bind" data-control-action="${action}">
+        ${label}
+        <span>${escapeHtml(keyLabel(settings.controls[action]))}</span>
+      </button>
+    `
+  ).join("");
+  els.controlBindings.querySelectorAll("[data-control-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      awaitingControlAction = button.dataset.controlAction;
+      button.querySelector("span").textContent = "Press key";
+    });
+  });
+}
+
+function keyLabel(key) {
+  const labels = {
+    " ": "Space",
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right"
+  };
+  return labels[key] || key;
+}
+
+function normalizeKey(event) {
+  if (event.key === "ShiftLeft" || event.key === "ShiftRight") return "Shift";
+  if (event.key === " ") return " ";
+  if (event.key === "Esc") return "Escape";
+  return event.key;
+}
+
+function keyMatches(event, action) {
+  const key = normalizeKey(event);
+  return key === settings.controls[action] || (CONTROL_ALIASES[action] || []).includes(key);
+}
+
+function isSprintActive(event = null) {
+  return (
+    touchSprintActive ||
+    Boolean(event?.shiftKey) ||
+    (event ? keyMatches(event, "sprint") : false)
+  );
 }
 
 function migrateLegacySave() {
@@ -712,6 +959,7 @@ function applySettings() {
   els.autosaveSetting.checked = settings.autosave;
   els.motionSetting.checked = settings.reducedMotion;
   els.confirmNewGameSetting.checked = settings.confirmNewGame;
+  renderControlBindings();
 }
 
 function renderTitleScreen(message = "") {
@@ -731,7 +979,7 @@ function renderTitleScreen(message = "") {
     return;
   }
 
-  els.titleStatus.textContent = `${summary.location} / ${summary.partyCount} partner${summary.partyCount === 1 ? "" : "s"} / ${summary.caught} archived / ${formatPlaytime(summary.playtime)}`;
+  els.titleStatus.textContent = `${summary.playerName || "Ranger"} / ${summary.location} / ${summary.partyCount} partner${summary.partyCount === 1 ? "" : "s"} / ${summary.caught} archived / ${formatPlaytime(summary.playtime)}`;
 }
 
 function showTitleScreen(message = "") {
@@ -772,6 +1020,7 @@ function startNewGame() {
   closeUtilityModals();
   hideTitleScreen();
   renderAll();
+  openProfileModal();
 }
 
 function continueSavedGame() {
@@ -916,6 +1165,7 @@ function bindSlotButtons(root, modeName) {
 function closeUtilityModals() {
   els.loadModal.classList.add("hidden");
   els.saveModal.classList.add("hidden");
+  els.profileModal.classList.add("hidden");
   els.settingsModal.classList.add("hidden");
   els.creditsModal.classList.add("hidden");
 }
@@ -1337,6 +1587,7 @@ function chooseStarter(speciesId) {
   state.caught.add(speciesId);
   state.flags.choseStarter = true;
   state.quests.starterChosen = true;
+  updateAchievements();
   appScreen = "game";
   mode = "world";
   els.titleScreen.classList.add("hidden");
@@ -1383,6 +1634,7 @@ function interact() {
     return;
   }
   if (mode !== "world") return;
+  trackStatistic("interactions");
   const here = objectAt(state.player.x, state.player.y);
   if (here && !here.blocks) {
     here.action();
@@ -1422,22 +1674,30 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => els.toast.classList.add("hidden"), 2200);
 }
 
-function attemptMove(direction) {
+function attemptMove(direction, sprinting = false) {
   if (mode !== "world" || moving) return;
   const now = performance.now();
-  if (now - lastMoveAt < 90) return;
+  const stepDelay = sprinting ? 52 : 90;
+  if (now - lastMoveAt < stepDelay) return;
   lastMoveAt = now;
   const delta = DIRS[direction];
   state.player.dir = direction;
+  state.player.isSprinting = Boolean(sprinting);
   const nextX = state.player.x + delta.x;
   const nextY = state.player.y + delta.y;
   if (isBlocked(nextX, nextY)) {
+    trackStatistic("collisions");
+    state.player.isMoving = false;
     drawWorld();
     return;
   }
   state.player.x = nextX;
   state.player.y = nextY;
+  state.player.animationStartedAt = now;
+  state.player.isMoving = true;
   state.steps += 1;
+  trackStatistic("stepsWalked");
+  if (sprinting) trackStatistic("sprintSteps");
   updateHud();
   drawWorld();
   maybeEncounter();
@@ -1468,6 +1728,7 @@ function startWildBattle(zone) {
   const bonus = zone === "cave" ? 2 : zone === "forest" ? 1 : 0;
   const level = clamp(Math.round(average + bonus + (Math.random() * 3 - 1)), 2, 12);
   const enemy = createMon(speciesId, level);
+  trackStatistic("wildBattles");
   state.seen.add(speciesId);
   battle = {
     type: "wild",
@@ -1490,6 +1751,7 @@ function startTrainerBattle(id) {
     return;
   }
   const trainer = TRAINERS[id];
+  trackStatistic("trainerBattles");
   const enemyParty = trainer.party.map(([speciesId, level]) => createMon(speciesId, level));
   state.seen.add(enemyParty[0].speciesId);
   battle = {
@@ -1652,6 +1914,7 @@ async function checkPlayerFainted() {
 function finishBattle(won) {
   if (!battle) return;
   if (won) {
+    trackStatistic("battlesWon");
     const trainer = battle.type === "trainer" ? TRAINERS[battle.trainerId] : null;
     const baseReward = trainer ? trainer.reward : 12 + battle.enemy.level * 4;
     const xp = trainer ? 46 + battle.enemy.level * 12 : 28 + battle.enemy.level * 9;
@@ -1732,6 +1995,7 @@ async function tryCapture() {
       state.reserve.push(enemy);
       pushBattleLog(`${species.name} went to the meadow reserve.`);
     }
+    trackStatistic("captures");
     finishBattle(false);
     return;
   }
@@ -2017,6 +2281,10 @@ function renderBag() {
       <div class="bag-text">${seenCount} species seen. ${state.reserve.length} in meadow reserve.</div>
     </article>
     <article class="bag-card">
+      <div class="bag-line"><strong>Ranger</strong><span>${escapeHtml(state.player.name)}</span></div>
+      <div class="bag-text">${state.player.currentMap} at ${state.player.x}, ${state.player.y}. ${formatPlaytime(currentPlaytime())} logged.</div>
+    </article>
+    <article class="bag-card">
       <div class="bag-line"><strong>Map Marks</strong><span>${Number(ren) + Number(vala)}/2</span></div>
       <div class="bag-text">${ren ? "East bridge marked." : "Scout Ren waits by the east bridge."}</div>
       <div class="bag-text">${vala ? "Quarry marked." : "Keeper Vala watches the quarry path."}</div>
@@ -2025,7 +2293,10 @@ function renderBag() {
 }
 
 function updateHud() {
+  updatePlayerLocation();
+  els.playerNameTag.textContent = state.player.name;
   els.placeName.textContent = placeName();
+  els.coordTag.textContent = `${state.player.x}, ${state.player.y}`;
   els.coinCount.textContent = `${state.inventory.petals} petals`;
   els.capsuleCount.textContent = `${state.inventory.capsules} capsules`;
 }
@@ -2326,24 +2597,97 @@ function drawObject(object) {
 function drawPlayer(x, y, dir) {
   const sx = x * TILE;
   const sy = y * TILE;
+  const now = performance.now();
+  const movingNow = state.player.isMoving && now - state.player.animationStartedAt < 180;
+  if (!movingNow) state.player.isMoving = false;
+  const sprinting = state.player.isSprinting && movingNow;
+  const palette = PLAYER_SPRITES[state.player.sprite] || PLAYER_SPRITES.sprig;
+  const phase = movingNow
+    ? Math.sin((now - state.player.animationStartedAt) / (sprinting ? 34 : 48))
+    : Math.sin(now / 520) * 0.35;
+  const bob = movingNow ? Math.abs(phase) * (sprinting ? 3 : 2) : phase;
+  const arm = movingNow ? phase * 3 : 0;
+  const leg = movingNow ? phase * 2 : 0;
+
   ctx.fillStyle = "rgba(0,0,0,.24)";
   ctx.beginPath();
   ctx.ellipse(sx + 16, sy + 28, 11, 4, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#2b3440";
-  ctx.fillRect(sx + 9, sy + 14, 14, 13);
-  ctx.fillStyle = "#e5b48d";
-  ctx.fillRect(sx + 11, sy + 8, 10, 9);
-  ctx.fillStyle = "#5dd39e";
-  ctx.fillRect(sx + 8, sy + 4, 16, 6);
-  ctx.fillStyle = "#f7d46c";
-  ctx.fillRect(sx + 10, sy + 3, 12, 3);
+
+  ctx.fillStyle = palette.pants;
+  ctx.fillRect(sx + 9, sy + 23 + Math.max(0, leg), 5, 7);
+  ctx.fillRect(sx + 18, sy + 23 + Math.max(0, -leg), 5, 7);
+  ctx.fillStyle = palette.shirt;
+  ctx.fillRect(sx + 9, sy + 14 + bob, 14, 12);
+  ctx.fillRect(sx + 6, sy + 15 + bob + Math.max(0, arm), 4, 8);
+  ctx.fillRect(sx + 22, sy + 15 + bob + Math.max(0, -arm), 4, 8);
+  ctx.fillStyle = palette.skin;
+  ctx.fillRect(sx + 11, sy + 8 + bob, 10, 9);
+  ctx.fillStyle = palette.hat;
+  ctx.fillRect(sx + 8, sy + 4 + bob, 16, 6);
+  ctx.fillRect(sx + 10, sy + 3 + bob, 12, 3);
   ctx.fillStyle = "#151d1f";
-  if (dir === "left") ctx.fillRect(sx + 11, sy + 11, 2, 2);
-  else if (dir === "right") ctx.fillRect(sx + 19, sy + 11, 2, 2);
+  if (dir === "left") ctx.fillRect(sx + 11, sy + 11 + bob, 2, 2);
+  else if (dir === "right") ctx.fillRect(sx + 19, sy + 11 + bob, 2, 2);
   else {
-    ctx.fillRect(sx + 12, sy + 11, 2, 2);
-    ctx.fillRect(sx + 18, sy + 11, 2, 2);
+    ctx.fillRect(sx + 12, sy + 11 + bob, 2, 2);
+    ctx.fillRect(sx + 18, sy + 11 + bob, 2, 2);
+  }
+}
+
+function playerSvg(spriteId, dir = "down", moving = false, sprinting = false, scale = 1) {
+  const palette = PLAYER_SPRITES[spriteId] || PLAYER_SPRITES.sprig;
+  const bob = moving ? (sprinting ? 2 : 1) : 0;
+  const eyeLeft = dir === "left" ? 13 : 14;
+  const eyeRight = dir === "right" ? 20 : 18;
+  return `
+    <svg viewBox="0 0 32 32" width="${Math.round(48 * scale)}" height="${Math.round(48 * scale)}" role="img" aria-label="Player sprite" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="16" cy="28" rx="10" ry="3" fill="rgba(0,0,0,.24)" />
+      <rect x="9" y="${23 + bob}" width="5" height="7" fill="${palette.pants}" />
+      <rect x="18" y="${23 - bob}" width="5" height="7" fill="${palette.pants}" />
+      <rect x="9" y="${14 + bob}" width="14" height="12" fill="${palette.shirt}" />
+      <rect x="6" y="${16 + bob}" width="4" height="8" fill="${palette.shirt}" />
+      <rect x="22" y="${16 - bob}" width="4" height="8" fill="${palette.shirt}" />
+      <rect x="11" y="${8 + bob}" width="10" height="9" fill="${palette.skin}" />
+      <rect x="8" y="${4 + bob}" width="16" height="6" fill="${palette.hat}" />
+      <rect x="10" y="${3 + bob}" width="12" height="3" fill="${palette.hat}" />
+      <rect x="${eyeLeft}" y="${11 + bob}" width="2" height="2" fill="#151d1f" />
+      <rect x="${eyeRight}" y="${11 + bob}" width="2" height="2" fill="#151d1f" />
+    </svg>
+  `;
+}
+
+function pollGamepad() {
+  if (appScreen !== "game" || mode !== "world" || typeof navigator === "undefined") return;
+  if (!navigator.getGamepads) return;
+  const pad = [...navigator.getGamepads()].find(Boolean);
+  if (!pad) return;
+
+  const now = performance.now();
+  const sprinting = Boolean(pad.buttons[1]?.pressed || pad.buttons[5]?.pressed);
+  const horizontal = pad.axes[0] || 0;
+  const vertical = pad.axes[1] || 0;
+  let direction = null;
+
+  if (Math.abs(horizontal) > Math.abs(vertical) && Math.abs(horizontal) > 0.45) {
+    direction = horizontal < 0 ? "left" : "right";
+  } else if (Math.abs(vertical) > 0.45) {
+    direction = vertical < 0 ? "up" : "down";
+  }
+
+  if (direction && now - lastGamepadMoveAt > (sprinting ? 65 : 120)) {
+    lastGamepadMoveAt = now;
+    trackStatistic("controllerInputs");
+    attemptMove(direction, sprinting);
+  }
+
+  const actionPressed = Boolean(pad.buttons[0]?.pressed);
+  if (actionPressed && !gamepadActionHeld) {
+    gamepadActionHeld = true;
+    trackStatistic("controllerInputs");
+    interact();
+  } else if (!actionPressed) {
+    gamepadActionHeld = false;
   }
 }
 
@@ -2362,9 +2706,19 @@ function escapeHtml(value) {
 
 function setupEvents() {
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
+    if (awaitingControlAction) {
+      event.preventDefault();
+      settings.controls[awaitingControlAction] = normalizeKey(event);
+      awaitingControlAction = null;
+      saveSettings();
+      renderControlBindings();
+      return;
+    }
+
+    if (keyMatches(event, "pause")) {
       event.preventDefault();
       if (!els.settingsModal.classList.contains("hidden")) closeSettingsModal();
+      else if (!els.profileModal.classList.contains("hidden")) closeProfileModal();
       else if (!els.saveModal.classList.contains("hidden")) els.saveModal.classList.add("hidden");
       else if (!els.loadModal.classList.contains("hidden")) els.loadModal.classList.add("hidden");
       else if (!els.creditsModal.classList.contains("hidden")) closeCreditsModal();
@@ -2373,44 +2727,28 @@ function setupEvents() {
       return;
     }
 
-    if (event.key === "p" || event.key === "P") {
-      event.preventDefault();
-      if (mode === "paused") resumeGame();
-      else openPauseMenu();
-      return;
-    }
-
     if (appScreen !== "game" || mode === "paused") return;
 
-    const keyMap = {
-      ArrowUp: "up",
-      w: "up",
-      W: "up",
-      ArrowDown: "down",
-      s: "down",
-      S: "down",
-      ArrowLeft: "left",
-      a: "left",
-      A: "left",
-      ArrowRight: "right",
-      d: "right",
-      D: "right"
-    };
-    if (keyMap[event.key]) {
+    const moveAction = ["up", "down", "left", "right"].find((action) => keyMatches(event, action));
+    if (moveAction) {
       event.preventDefault();
-      attemptMove(keyMap[event.key]);
+      attemptMove(moveAction, isSprintActive(event));
       return;
     }
-    if (event.key === " " || event.key === "Enter") {
+    if (keyMatches(event, "interact")) {
       event.preventDefault();
       interact();
     }
   });
 
   document.querySelectorAll(".touch-controls [data-dir]").forEach((button) => {
-    button.addEventListener("click", () => attemptMove(button.dataset.dir));
+    button.addEventListener("click", () => attemptMove(button.dataset.dir, touchSprintActive));
   });
   els.actionButton.addEventListener("click", interact);
+  els.sprintButton.addEventListener("click", () => {
+    touchSprintActive = !touchSprintActive;
+    els.sprintButton.classList.toggle("active", touchSprintActive);
+  });
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => setPanel(tab.dataset.panel));
@@ -2425,6 +2763,7 @@ function setupEvents() {
   els.quitButton.addEventListener("click", quitGame);
   els.resumeButton.addEventListener("click", resumeGame);
   els.pauseSaveButton.addEventListener("click", pauseSave);
+  els.pauseProfileButton.addEventListener("click", openProfileModal);
   els.pausePartyButton.addEventListener("click", () => openPanelFromPause("party"));
   els.pauseInventoryButton.addEventListener("click", () => openPanelFromPause("bag"));
   els.pauseArchiveButton.addEventListener("click", () => openPanelFromPause("guide"));
@@ -2433,6 +2772,9 @@ function setupEvents() {
   els.loadConfirmButton.addEventListener("click", continueSavedGame);
   els.closeLoadButton.addEventListener("click", () => els.loadModal.classList.add("hidden"));
   els.closeSaveButton.addEventListener("click", () => els.saveModal.classList.add("hidden"));
+  els.saveProfileButton.addEventListener("click", saveProfile);
+  els.closeProfileButton.addEventListener("click", closeProfileModal);
+  els.playerSpriteSelect.addEventListener("change", renderProfile);
   els.settingsDoneButton.addEventListener("click", closeSettingsModal);
   els.closeCreditsButton.addEventListener("click", closeCreditsModal);
   els.autosaveSetting.addEventListener("change", () => {
@@ -2477,6 +2819,7 @@ function boot() {
 }
 
 function loop() {
+  pollGamepad();
   drawWorld();
   requestAnimationFrame(loop);
 }
